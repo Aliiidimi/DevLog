@@ -2,7 +2,7 @@
   "name": "devlog",
   "productName": "DevLog",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -22,7 +22,8 @@
     "publish": {
       "provider": "github",
       "owner": "Aliiidimi",
-      "repo": "DevLog"
+      "repo": "DevLog",
+      "releaseType": "release"
     },
     "files": [
       "dist/**/*",

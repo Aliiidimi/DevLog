@@ -28,6 +28,7 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
   // Auto Updater state
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [appVersion, setAppVersion] = useState('v1.0.1');
 
   // Developer Profile state
   const [devName, setDevName] = useState(() => localStorage.getItem('devlog_profile_name') || 'Solo Geliştirici');
@@ -40,6 +41,11 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     setApiKey(getGeminiApiKey());
     calculateStats();
+    if (window.devlogDesktop?.getAppVersion) {
+      window.devlogDesktop.getAppVersion().then(v => {
+        if (v) setAppVersion('v' + v);
+      });
+    }
   }, []);
 
   const calculateStats = () => {
@@ -334,7 +340,7 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
               </div>
               <div>
                 <h3 className="text-lg font-bold">Uygulama Güncellemeleri</h3>
-                <p className="text-xs text-text-muted">Mevcut sürüm: <span className="text-white font-mono">v1.0.0</span> • Tek tıkla otomatik güncelleme</p>
+                <p className="text-xs text-text-muted">Mevcut sürüm: <span className="text-white font-mono">{appVersion}</span> • Tek tıkla otomatik güncelleme</p>
               </div>
             </div>
 
@@ -386,7 +392,7 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
             <Info className="w-5 h-5 text-text-muted shrink-0" />
             <div>
               <p className="font-semibold text-white">DevLog - Game Developer Project & AI Assistant</p>
-              <p>Masaüstü Sürümü: v1.0.0 • Electron 44 • React 19 • Firebase Sync</p>
+              <p>Masaüstü Sürümü: {appVersion} • Electron 44 • React 19 • Firebase Sync</p>
             </div>
           </div>
           <div className="px-3 py-1 bg-white/5 rounded-full border border-border font-mono text-[11px]">
