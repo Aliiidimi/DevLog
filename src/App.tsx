@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Terminal, PlusCircle, LayoutDashboard, Settings, LogOut } from 'lucide-react';
+import { Terminal, PlusCircle, LayoutDashboard, Settings, LogOut, ArrowDownToLine } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -16,6 +16,18 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloadedUpdate, setDownloadedUpdate] = useState<{ version?: string } | null>(null);
+
+  useEffect(() => {
+    if (window.devlogDesktop?.onUpdateStatus) {
+      const unsub = window.devlogDesktop.onUpdateStatus((status) => {
+        if (status.status === 'downloaded') {
+          setDownloadedUpdate({ version: status.version });
+        }
+      });
+      return unsub;
+    }
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -132,6 +144,32 @@ function App() {
         onClose={() => setIsModalOpen(false)} 
         onSuccess={(newProject) => setProjects([newProject, ...projects])}
       />
+
+      {/* Canlı Otomatik Güncelleme Bildirim Çubuğu */}
+      {downloadedUpdate && (
+        <div className="fixed bottom-6 right-6 z-50 bg-surface/95 backdrop-blur-md border border-emerald-500/40 shadow-2xl rounded-2xl p-4 flex items-center gap-4 animate-in slide-in-from-bottom duration-300">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <ArrowDownToLine className="w-5 h-5 animate-bounce" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              Yeni Güncelleme Hazır!
+              {downloadedUpdate.version && (
+                <span className="text-[11px] font-mono px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">
+                  v{downloadedUpdate.version}
+                </span>
+              )}
+            </h4>
+            <p className="text-xs text-text-muted mt-0.5">Uygulama arka planda indirildi, hemen geçiş yapabilirsiniz.</p>
+          </div>
+          <button
+            onClick={() => window.devlogDesktop?.installUpdate?.()}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg transition-all active:scale-[0.96] shrink-0"
+          >
+            Yeniden Başlat
+          </button>
+        </div>
+      )}
     </div>
   );
 }

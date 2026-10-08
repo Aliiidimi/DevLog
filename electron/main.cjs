@@ -240,6 +240,15 @@ function createWindow(port) {
     if (!mainWindow) return;
     mainWindow.show();
     mainWindow.focus();
+
+    // Uygulama açılışından 3 saniye sonra sessizce arka planda güncellemeleri kontrol et
+    if (autoUpdater) {
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(err => {
+          console.warn('Açılışta otomatik güncelleme kontrolü:', err.message);
+        });
+      }, 3000);
+    }
   });
 
   // Google OAuth Popup Pencerelerine İzin Ver
