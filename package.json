@@ -11,7 +11,7 @@
     "app": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -b && vite build",
     "build:win": "tsc -b && vite build && electron-builder --win --dir",
-    "build:installer": "tsc -b && vite build && electron-builder --win",
+    "build:installer": "tsc -b && vite build && electron-builder --win -p always",
     "build:mac": "tsc -b && vite build && electron-builder --mac",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -25,6 +25,12 @@
       "repo": "DevLog",
       "releaseType": "release"
     },
+    "extraResources": [
+      {
+        "from": "dev-app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*"

@@ -63,6 +63,11 @@ try {
   autoUpdater = updaterModule.autoUpdater;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'Aliiidimi',
+    repo: 'DevLog'
+  });
 } catch (e) {
   console.warn('Auto-updater module not active:', e.message);
 }
