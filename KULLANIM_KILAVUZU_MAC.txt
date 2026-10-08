@@ -1,0 +1,33 @@
+==================================================================
+           DevLog - MACBOOK (macOS) KURULUM REHBERİ
+==================================================================
+
+Bu klasör, DevLog uygulamasının Macbook (M1/M2/M3/M4 Apple Silicon
+veya Intel işlemcili) cihazınızda çalışması için hazırlandı.
+
+GEREKSİNİM:
+-----------
+Macbook'unuzda Node.js kurulu olmalıdır.
+(Eğer kurulu değilse: https://nodejs.org adresinden "LTS" sürümünü
+indirip Mac'inize çift tıklayarak kurun - 1 dakikalık işlemdir).
+
+
+KOLAY KURULUM VE ÇALIŞTIRMA:
+----------------------------
+1. Bu klasörü Macbook'unuza aktarın (AirDrop, USB bellek veya Google Drive ile).
+2. "DevLog-Mac-Kurulum-ve-Baslat.command" dosyasına çift tıklayın!
+3. Açılan Terminal penceresinde:
+   - "1" tuşuna basarsanız DevLog hemen açılır!
+   - "2" tuşuna basarsanız macOS için özel "DevLog.dmg" kurulum dosyasını
+     otomatik olarak üretip Macbook'unuzun Masaüstüne kaydeder!
+
+NOT (GÜVENLİK İZNİ):
+-------------------
+Mac OS ilk kez .command dosyası açıldığında "Geliştirici doğrulanamadı"
+veya izin uyarısı verirse:
+- Dosyaya sağ tıklayıp (iki parmakla dokunup) "Aç" (Open) deyin.
+- Ya da Mac Terminal'i açıp şu komutu yazmanız yeterlidir:
+  chmod +x *.command
+
+Herhangi bir sorunuz olursa hazırız! İyi çalışmalar!
+==================================================================
