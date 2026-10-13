@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('devlogDesktop', {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   onUpdateStatus: (callback) => {
     const handler = (_event, status) => callback(status);
     ipcRenderer.on('update-status', handler);

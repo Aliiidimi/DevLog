@@ -12,7 +12,8 @@ import {
   ShieldCheck,
   RefreshCw,
   ArrowLeft,
-  ArrowDownToLine
+  ArrowDownToLine,
+  ExternalLink
 } from 'lucide-react';
 import { getGeminiApiKey, setGeminiApiKey, testGeminiConnection } from '../lib/gemini';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,7 +29,7 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
   // Auto Updater state
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [appVersion, setAppVersion] = useState('v1.0.3');
+  const [appVersion, setAppVersion] = useState('v1.0.4');
 
   // Developer Profile state
   const [devName, setDevName] = useState(() => localStorage.getItem('devlog_profile_name') || 'Solo Geliştirici');
@@ -344,19 +345,38 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleCheckUpdate}
-              disabled={checkingUpdate}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-all active:scale-[0.98]"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
-              {checkingUpdate ? 'Kontrol Ediliyor...' : 'Güncellemeleri Denetle'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const url = 'https://github.com/Aliiidimi/DevLog/releases/latest';
+                  if (window.devlogDesktop?.openExternal) {
+                    window.devlogDesktop.openExternal(url);
+                  } else {
+                    window.open(url, '_blank');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-border rounded-lg text-xs font-medium transition-all"
+                title="GitHub İndirme Sayfasını Aç"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                GitHub Sayfası
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-all active:scale-[0.98]"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                {checkingUpdate ? 'Kontrol Ediliyor...' : 'Güncellemeleri Denetle'}
+              </button>
+            </div>
           </div>
 
           {updateStatus && (
-            <div className={`p-3.5 rounded-lg text-xs flex items-center justify-between gap-3 ${
+            <div className={`p-3.5 rounded-lg text-xs flex flex-wrap items-center justify-between gap-3 ${
               updateStatus.status === 'downloaded'
                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                 : updateStatus.status === 'available' || updateStatus.status === 'downloading'
@@ -365,23 +385,44 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
                 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
                 : 'bg-white/5 text-text-muted border border-border'
             }`}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
                 {updateStatus.status === 'checking' && <Loader2 className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />}
                 {updateStatus.status === 'downloaded' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
                 {updateStatus.status === 'not-available' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
                 {updateStatus.status === 'error' && <XCircle className="w-4 h-4 text-amber-400 shrink-0" />}
-                <span>{updateStatus.message || (updateStatus.percent ? `İndiriliyor: %${updateStatus.percent}` : 'İşleniyor...')}</span>
+                <span className="leading-relaxed">{updateStatus.message || (updateStatus.percent ? `İndiriliyor: %${updateStatus.percent}` : 'İşleniyor...')}</span>
               </div>
 
-              {updateStatus.status === 'downloaded' && (
-                <button
-                  type="button"
-                  onClick={handleInstallUpdate}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium text-xs transition-all active:scale-[0.96]"
-                >
-                  Yeniden Başlat ve Yükle
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Hata durumunda veya güncelleme varken tek tıkla GitHub'a yönlendiren kurtarıcı buton */}
+                {(updateStatus.status === 'error' || updateStatus.status === 'available' || updateStatus.status === 'unsupported') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = 'https://github.com/Aliiidimi/DevLog/releases/latest';
+                      if (window.devlogDesktop?.openExternal) {
+                        window.devlogDesktop.openExternal(url);
+                      } else {
+                        window.open(url, '_blank');
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-md font-medium text-xs flex items-center gap-1.5 transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    GitHub'dan İndir (DMG / EXE)
+                  </button>
+                )}
+
+                {updateStatus.status === 'downloaded' && (
+                  <button
+                    type="button"
+                    onClick={handleInstallUpdate}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium text-xs transition-all active:scale-[0.96]"
+                  >
+                    Yeniden Başlat ve Yükle
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

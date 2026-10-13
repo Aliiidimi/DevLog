@@ -60,6 +60,7 @@ declare global {
       checkForUpdates?: () => Promise<any>;
       installUpdate?: () => Promise<any>;
       getAppVersion?: () => Promise<string>;
+      openExternal?: (url: string) => Promise<void>;
       onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
     };
   }

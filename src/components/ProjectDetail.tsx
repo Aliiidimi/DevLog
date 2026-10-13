@@ -87,6 +87,8 @@ export default function ProjectDetail({
   const [newBugCategory, setNewBugCategory] = useState('');
   const [selectedBugCategoryFilter, setSelectedBugCategoryFilter] = useState('ALL');
   const [isAddingBug, setIsAddingBug] = useState(false);
+  const [categoryModalTask, setCategoryModalTask] = useState<ProjectTask | null>(null);
+  const [newCategoryModalInput, setNewCategoryModalInput] = useState('');
 
   // New Media Form
   const [mediaTitle, setMediaTitle] = useState('');
@@ -1050,14 +1052,17 @@ export default function ProjectDetail({
                                   {/* Kategori Değiştirici Buton */}
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      const newCat = prompt('Yeni kategori adını yazın (Boş bırakırsanız kategorisiz olur):', todo.category || '');
-                                      if (newCat !== null) {
-                                        handleUpdateTaskCategory(todo, newCat);
-                                      }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCategoryModalTask(todo);
+                                      setNewCategoryModalInput('');
                                     }}
-                                    title="Kategoriyi değiştir veya ata"
-                                    className="text-[10px] px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-border flex items-center gap-1 transition-colors"
+                                    title="Kategori Seç veya Ekle"
+                                    className={`text-[10px] px-2 py-0.5 rounded border flex items-center gap-1 transition-all cursor-pointer ${
+                                      todo.category
+                                        ? 'bg-primary/15 text-primary border-primary/40 hover:bg-primary/25 font-medium'
+                                        : 'bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border-border'
+                                    }`}
                                   >
                                     <Tag className="w-2.5 h-2.5" />
                                     {todo.category ? todo.category : '+ Kategori'}
@@ -1323,14 +1328,17 @@ export default function ProjectDetail({
                                     {/* Kategori Değiştirici Buton */}
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        const newCat = prompt('Yeni kategori adını yazın (Boş bırakırsanız kategorisiz olur):', bug.category || '');
-                                        if (newCat !== null) {
-                                          handleUpdateTaskCategory(bug, newCat);
-                                        }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCategoryModalTask(bug);
+                                        setNewCategoryModalInput('');
                                       }}
-                                      title="Kategoriyi değiştir veya ata"
-                                      className="text-[10px] px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-border flex items-center gap-1 transition-colors"
+                                      title="Kategori Seç veya Ekle"
+                                      className={`text-[10px] px-2 py-0.5 rounded border flex items-center gap-1 transition-all cursor-pointer ${
+                                        bug.category
+                                          ? 'bg-red-500/15 text-red-400 border-red-500/40 hover:bg-red-500/25 font-medium'
+                                          : 'bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border-border'
+                                      }`}
                                     >
                                       <Tag className="w-2.5 h-2.5" />
                                       {bug.category ? bug.category : '+ Kategori'}
@@ -1646,6 +1654,140 @@ export default function ProjectDetail({
               {selectedPreviewImage.description && (
                 <p className="text-xs text-text-muted mt-1">{selectedPreviewImage.description}</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Selection Modal */}
+      {categoryModalTask && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setCategoryModalTask(null)}
+        >
+          <div 
+            className="bg-surface border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-lg ${categoryModalTask.type === 'bug' ? 'bg-red-500/10 text-red-400' : 'bg-primary/10 text-primary'}`}>
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Kategori Seç veya Ekle</h3>
+                  <p className="text-xs text-text-muted truncate max-w-[280px]">
+                    {categoryModalTask.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryModalTask(null)}
+                className="text-text-muted hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col gap-5">
+              {/* Var Olan Kategoriler */}
+              <div>
+                <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2.5">
+                  Var Olan Kategoriler
+                </label>
+                {(() => {
+                  const relevantCategories = Array.from(
+                    new Set([
+                      ...(categoryModalTask.type === 'bug' ? bugCategories : todoCategories),
+                      ...(categoryModalTask.type === 'bug' ? todoCategories : bugCategories)
+                    ])
+                  ).filter(Boolean);
+
+                  if (relevantCategories.length === 0) {
+                    return (
+                      <p className="text-xs text-text-muted italic bg-surface/50 p-3 rounded-xl border border-dashed border-border/70">
+                        Henüz oluşturulmuş bir kategori yok. Aşağıdan yeni bir kategori ekleyebilirsiniz.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                      {relevantCategories.map((cat) => {
+                        const isSelected = categoryModalTask.category === cat;
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => {
+                              handleUpdateTaskCategory(categoryModalTask, cat);
+                              setCategoryModalTask(null);
+                            }}
+                            className={`px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-primary text-white shadow-md ring-2 ring-primary/40'
+                                : 'bg-white/5 hover:bg-white/10 text-white border border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <Folder className="w-3.5 h-3.5 text-text-muted" />
+                            <span>{cat}</span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 ml-1 text-white" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {categoryModalTask.category && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUpdateTaskCategory(categoryModalTask, '');
+                      setCategoryModalTask(null);
+                    }}
+                    className="mt-3 text-xs text-red-400 hover:text-red-300 flex items-center gap-1.5 cursor-pointer hover:underline transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Kategoriyi Kaldır (Genel / Kategorisiz Yap)
+                  </button>
+                )}
+              </div>
+
+              {/* Yeni Kategori Ekle */}
+              <div className="pt-4 border-t border-border">
+                <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
+                  Yeni Kategori Ekle & Ata
+                </label>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newCategoryModalInput.trim()) return;
+                    handleUpdateTaskCategory(categoryModalTask, newCategoryModalInput.trim());
+                    setCategoryModalTask(null);
+                    setNewCategoryModalInput('');
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={newCategoryModalInput}
+                    onChange={(e) => setNewCategoryModalInput(e.target.value)}
+                    placeholder="Örn: Kategori 1, Çevre Tasarımı, Ses..."
+                    className="flex-1 bg-surface border border-border rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-text-muted/60 focus:outline-none focus:border-primary transition-colors"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newCategoryModalInput.trim()}
+                    className="bg-primary hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0 shadow-sm"
+                  >
+                    Ekle & Ata
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>

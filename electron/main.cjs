@@ -256,21 +256,28 @@ async function checkMacUpdates() {
 
 function installMacUpdate() {
   if (!macExtractedAppPath || !fs.existsSync(macExtractedAppPath)) {
-    console.warn('Yüklenecek Mac güncelleme dosyası bulunamadı.');
+    console.warn('Yüklenecek Mac güncelleme dosyası bulunamadı. GitHub sayfası açılıyor.');
+    shell.openExternal('https://github.com/Aliiidimi/DevLog/releases/latest');
     return;
   }
 
   const execPath = process.execPath;
   const match = execPath.match(/(.*?\.app)\//);
-  const currentAppPath = match ? match[1] : '/Applications/DevLog.app';
+  let currentAppPath = match ? match[1] : '/Applications/DevLog.app';
+
+  // Eğer kullanıcı DMG içinden açmışsa hedef Applications klasörüdür
+  if (currentAppPath.startsWith('/Volumes/')) {
+    currentAppPath = '/Applications/DevLog.app';
+  }
 
   const scriptPath = path.join(app.getPath('temp'), 'devlog_mac_updater.sh');
   const scriptContent = `#!/bin/bash
 sleep 1
-rm -rf "${currentAppPath}"
-cp -R "${macExtractedAppPath}" "${currentAppPath}"
-xattr -cr "${currentAppPath}" 2>/dev/null || true
-open -n "${currentAppPath}"
+TARGET_PATH="${currentAppPath}"
+rm -rf "$TARGET_PATH" 2>/dev/null || true
+cp -R "${macExtractedAppPath}" "$TARGET_PATH"
+xattr -cr "$TARGET_PATH" 2>/dev/null || true
+open -n "$TARGET_PATH"
 `;
 
   try {
@@ -284,8 +291,15 @@ open -n "${currentAppPath}"
     app.quit();
   } catch (err) {
     console.error('Mac güncelleme betiği çalıştırılamadı:', err);
+    shell.openExternal('https://github.com/Aliiidimi/DevLog/releases/latest');
   }
 }
+
+ipcMain.handle('open-external', (_event, url) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
+});
 
 ipcMain.handle('get-app-version', () => app.getVersion());
 
