@@ -29,7 +29,7 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
   // Auto Updater state
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [appVersion, setAppVersion] = useState('v1.0.5');
+  const [appVersion, setAppVersion] = useState('v1.0.6');
 
   // Developer Profile state
   const [devName, setDevName] = useState(() => localStorage.getItem('devlog_profile_name') || 'Solo Geliştirici');

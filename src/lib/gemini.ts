@@ -15,9 +15,11 @@ export const setGeminiApiKey = (key: string) => {
 
 // Modeller listesi (En hızlı ve en güncelden eskiye doğru denenir)
 const CANDIDATE_MODELS = [
+  'gemini-3-flash-preview',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
   'gemini-1.5-flash-latest',
   'gemini-1.5-pro',
   'gemini-pro'
