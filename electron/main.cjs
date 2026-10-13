@@ -2,6 +2,7 @@ const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 
 // Chrome User Agent (Google OAuth "disallowed_useragent" engelini aşmak için zorunludur)
 const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -55,26 +56,247 @@ ipcMain.handle('clear-session', () => {
 });
 
 // -------------------------------------------------------------
-// Auto-Updater Integration (electron-updater)
+// Auto-Updater Integration (electron-updater for Windows, Custom Native for macOS)
 // -------------------------------------------------------------
 let autoUpdater = null;
-try {
-  const updaterModule = require('electron-updater');
-  autoUpdater = updaterModule.autoUpdater;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'Aliiidimi',
-    repo: 'DevLog'
+if (process.platform !== 'darwin') {
+  try {
+    const updaterModule = require('electron-updater');
+    autoUpdater = updaterModule.autoUpdater;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'Aliiidimi',
+      repo: 'DevLog'
+    });
+  } catch (e) {
+    console.warn('Auto-updater module not active:', e.message);
+  }
+}
+
+let isMacUpdating = false;
+let macExtractedAppPath = null;
+
+function compareVersions(v1, v2) {
+  const parse = v => (v || '').replace(/^v/, '').split('.').map(x => parseInt(x, 10) || 0);
+  const a = parse(v1);
+  const b = parse(v2);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const num1 = a[i] || 0;
+    const num2 = b[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+function fetchLatestGithubRelease() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/Aliiidimi/DevLog/releases/latest',
+      headers: {
+        'User-Agent': 'DevLog-Desktop-App',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    };
+    https.get(options, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return https.get(res.headers.location, { headers: { 'User-Agent': 'DevLog-Desktop-App' } }, (locRes) => {
+          let data = '';
+          locRes.on('data', chunk => data += chunk);
+          locRes.on('end', () => {
+            try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+          });
+        }).on('error', reject);
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            resolve(JSON.parse(data));
+          } else {
+            reject(new Error(`GitHub API HTTP ${res.statusCode}`));
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', reject);
   });
-} catch (e) {
-  console.warn('Auto-updater module not active:', e.message);
+}
+
+function downloadFileWithProgress(url, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    function requestUrl(currentUrl, hops = 0) {
+      if (hops > 10) return reject(new Error('Çok fazla yönlendirme'));
+      const parsed = new URL(currentUrl);
+      const client = parsed.protocol === 'https:' ? https : http;
+      client.get(currentUrl, { headers: { 'User-Agent': 'DevLog-Desktop-App' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          let nextUrl = res.headers.location;
+          if (!nextUrl.startsWith('http')) {
+            nextUrl = new URL(nextUrl, currentUrl).href;
+          }
+          return requestUrl(nextUrl, hops + 1);
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`İndirme başarısız: HTTP ${res.statusCode}`));
+        }
+
+        const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+        let receivedBytes = 0;
+        const file = fs.createWriteStream(destPath);
+
+        res.on('data', (chunk) => {
+          receivedBytes += chunk.length;
+          if (totalBytes > 0 && onProgress) {
+            const percent = Math.min(98, Math.round((receivedBytes / totalBytes) * 100));
+            onProgress(percent);
+          }
+        });
+
+        res.pipe(file);
+
+        file.on('finish', () => {
+          file.close(() => resolve());
+        });
+
+        file.on('error', (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+      }).on('error', reject);
+    }
+
+    requestUrl(url);
+  });
+}
+
+async function checkMacUpdates() {
+  if (isMacUpdating) return;
+  mainWindow?.webContents.send('update-status', { status: 'checking', message: 'Güncellemeler kontrol ediliyor...' });
+
+  try {
+    const releaseData = await fetchLatestGithubRelease();
+    const latestTag = releaseData.tag_name || '';
+    const latestVersion = latestTag.replace(/^v/, '');
+    const currentVersion = app.getVersion();
+
+    if (compareVersions(latestVersion, currentVersion) <= 0) {
+      mainWindow?.webContents.send('update-status', { status: 'not-available', message: 'Uygulamanız en güncel sürümde.' });
+      return;
+    }
+
+    const zipAsset = releaseData.assets?.find(a => 
+      process.arch === 'arm64' 
+        ? a.name.includes('-arm64-mac.zip') || a.name.includes('-mac.zip')
+        : a.name.includes('-mac.zip') && !a.name.includes('-arm64')
+    ) || releaseData.assets?.find(a => a.name.endsWith('-mac.zip') || a.name.endsWith('.zip'));
+
+    if (!zipAsset) {
+      mainWindow?.webContents.send('update-status', { 
+        status: 'error', 
+        message: `Yeni sürüm (${latestVersion}) bulundu ancak Mac zip paketi henüz hazır değil.` 
+      });
+      return;
+    }
+
+    mainWindow?.webContents.send('update-status', { 
+      status: 'available', 
+      version: latestVersion, 
+      message: `Yeni sürüm (${latestVersion}) indiriliyor...` 
+    });
+
+    isMacUpdating = true;
+    const tmpZip = path.join(app.getPath('temp'), `DevLog-${latestVersion}.zip`);
+    const extractDir = path.join(app.getPath('temp'), `DevLog-update-${Date.now()}`);
+
+    await downloadFileWithProgress(zipAsset.browser_download_url, tmpZip, (percent) => {
+      mainWindow?.webContents.send('update-status', { status: 'downloading', percent });
+    });
+
+    mainWindow?.webContents.send('update-status', { 
+      status: 'downloading', 
+      percent: 99, 
+      message: 'Güncelleme paketi açılıyor...' 
+    });
+
+    fs.mkdirSync(extractDir, { recursive: true });
+    const { execSync } = require('child_process');
+    execSync(`/usr/bin/unzip -q -o "${tmpZip}" -d "${extractDir}"`);
+
+    const items = fs.readdirSync(extractDir);
+    const appDir = items.find(f => f.endsWith('.app'));
+    if (!appDir) {
+      throw new Error('İndirilen zip paketi içinde DevLog.app bulunamadı.');
+    }
+
+    macExtractedAppPath = path.join(extractDir, appDir);
+
+    try {
+      execSync(`/usr/bin/xattr -cr "${macExtractedAppPath}"`);
+    } catch (e) {}
+
+    isMacUpdating = false;
+
+    mainWindow?.webContents.send('update-status', { 
+      status: 'downloaded', 
+      version: latestVersion, 
+      message: 'Güncelleme indirildi! Yeniden başlatabilirsiniz.' 
+    });
+  } catch (err) {
+    isMacUpdating = false;
+    mainWindow?.webContents.send('update-status', { status: 'error', message: err.message });
+  }
+}
+
+function installMacUpdate() {
+  if (!macExtractedAppPath || !fs.existsSync(macExtractedAppPath)) {
+    console.warn('Yüklenecek Mac güncelleme dosyası bulunamadı.');
+    return;
+  }
+
+  const execPath = process.execPath;
+  const match = execPath.match(/(.*?\.app)\//);
+  const currentAppPath = match ? match[1] : '/Applications/DevLog.app';
+
+  const scriptPath = path.join(app.getPath('temp'), 'devlog_mac_updater.sh');
+  const scriptContent = `#!/bin/bash
+sleep 1
+rm -rf "${currentAppPath}"
+cp -R "${macExtractedAppPath}" "${currentAppPath}"
+xattr -cr "${currentAppPath}" 2>/dev/null || true
+open -n "${currentAppPath}"
+`;
+
+  try {
+    fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
+    const { spawn } = require('child_process');
+    const child = spawn('/bin/bash', [scriptPath], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+    app.quit();
+  } catch (err) {
+    console.error('Mac güncelleme betiği çalıştırılamadı:', err);
+  }
 }
 
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.handle('check-for-updates', async () => {
+  if (process.platform === 'darwin') {
+    checkMacUpdates().catch(err => {
+      mainWindow?.webContents.send('update-status', { status: 'error', message: err.message });
+    });
+    return { status: 'checking' };
+  }
+
   if (!autoUpdater) return { status: 'unsupported', message: 'Auto-updater hazır değil.' };
   try {
     const res = await autoUpdater.checkForUpdates();
@@ -85,12 +307,15 @@ ipcMain.handle('check-for-updates', async () => {
 });
 
 ipcMain.handle('install-update', () => {
-  if (autoUpdater) {
+  if (process.platform === 'darwin') {
+    installMacUpdate();
+  } else if (autoUpdater) {
     autoUpdater.quitAndInstall();
   }
 });
 
 function setupUpdaterEvents() {
+  if (process.platform === 'darwin') return;
   if (!autoUpdater) return;
   autoUpdater.on('checking-for-update', () => {
     mainWindow?.webContents.send('update-status', { status: 'checking', message: 'Güncellemeler kontrol ediliyor...' });
@@ -247,13 +472,17 @@ function createWindow(port) {
     mainWindow.focus();
 
     // Uygulama açılışından 3 saniye sonra sessizce arka planda güncellemeleri kontrol et
-    if (autoUpdater) {
-      setTimeout(() => {
+    setTimeout(() => {
+      if (process.platform === 'darwin') {
+        checkMacUpdates().catch(err => {
+          console.warn('Açılışta Mac güncelleme kontrolü:', err.message);
+        });
+      } else if (autoUpdater) {
         autoUpdater.checkForUpdates().catch(err => {
           console.warn('Açılışta otomatik güncelleme kontrolü:', err.message);
         });
-      }, 3000);
-    }
+      }
+    }, 3000);
   });
 
   // Google OAuth Popup Pencerelerine İzin Ver
