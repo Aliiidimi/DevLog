@@ -26,7 +26,10 @@ import {
   Zap,
   Target,
   Folder,
-  Tag
+  Tag,
+  Key,
+  ExternalLink,
+  Lightbulb
 } from 'lucide-react';
 import type { Project, DailyLog, ProjectTask, ProjectMedia } from '../types';
 import { 
@@ -43,7 +46,15 @@ import {
   addProjectMedia,
   deleteProjectMedia
 } from '../lib/projectDetails';
-import { generateProjectSummary, generateSocialMediaPost } from '../lib/gemini';
+import { 
+  generateProjectSummary, 
+  generateSocialMediaPost,
+  generateDevAdvice,
+  generateSmartOfflineSummary,
+  getGeminiApiKey,
+  setGeminiApiKey,
+  getWorkingModelName
+} from '../lib/gemini';
 import EditProjectModal from './EditProjectModal';
 
 export default function ProjectDetail({ 
@@ -102,6 +113,10 @@ export default function ProjectDetail({
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [copiedAi, setCopiedAi] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isKeyConfigured, setIsKeyConfigured] = useState(() => Boolean(getGeminiApiKey()));
+  const [showKeySetup, setShowKeySetup] = useState(false);
+  const [keySaveMessage, setKeySaveMessage] = useState('');
 
   useEffect(() => {
     setProject(initialProject);
@@ -277,19 +292,54 @@ export default function ProjectDetail({
   };
 
   // --- Handlers: AI ---
-  const handleAI = async (action: 'summary-24h' | 'summary-all' | 'social-discord' | 'social-instagram') => {
+  const handleSaveApiKeyInline = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiKeyInput.trim()) return;
+    setGeminiApiKey(apiKeyInput.trim());
+    setIsKeyConfigured(true);
+    setShowKeySetup(false);
+    setKeySaveMessage('API Anahtarı kaydedildi! Şimdi gerçek yapay zeka özetini oluşturabilirsiniz. ✨');
+    setTimeout(() => setKeySaveMessage(''), 4000);
+  };
+
+  const handleAI = async (action: 'summary-24h' | 'summary-all' | 'social-discord' | 'social-instagram' | 'advice' | 'offline') => {
     setIsAiLoading(true);
     setAiResult(null);
     setCopiedAi(false);
+
+    if (action === 'offline') {
+      const result = generateSmartOfflineSummary(logs, tasks, 'all');
+      setAiResult(result);
+      setIsAiLoading(false);
+      return;
+    }
+
+    const currentKey = getGeminiApiKey();
+    if (!currentKey) {
+      setIsKeyConfigured(false);
+      setShowKeySetup(true);
+      setAiResult("⚠️ Gemini API anahtarı ayarlanmamış!\n\nGerçek yapay zeka analizleri ve akıllı özetler alabilmek için lütfen yukarıdaki kutucuğa ücretsiz Google Gemini API anahtarınızı girin.\n\n👉 Ücretsiz Anahtar Al: https://aistudio.google.com/app/apikey\n(Google hesabınızla saniyeler içinde ücretsiz alabilirsiniz)");
+      setIsAiLoading(false);
+      return;
+    }
+
     try {
       let result = '';
-      if (action === 'summary-24h') result = await generateProjectSummary(logs, tasks, '24h');
-      else if (action === 'summary-all') result = await generateProjectSummary(logs, tasks, 'all');
-      else if (action === 'social-discord') result = await generateSocialMediaPost(logs, 'discord');
-      else if (action === 'social-instagram') result = await generateSocialMediaPost(logs, 'instagram');
+      const projInfo = { name: project.name, engine: project.engine, type: project.type, version: project.version };
+      if (action === 'summary-24h') result = await generateProjectSummary(logs, tasks, '24h', projInfo);
+      else if (action === 'summary-all') result = await generateProjectSummary(logs, tasks, 'all', projInfo);
+      else if (action === 'social-discord') result = await generateSocialMediaPost(logs, 'discord', projInfo);
+      else if (action === 'social-instagram') result = await generateSocialMediaPost(logs, 'instagram', projInfo);
+      else if (action === 'advice') result = await generateDevAdvice(logs, tasks, projInfo);
       setAiResult(result);
     } catch (err: any) {
-      setAiResult("Yapay zeka hatası: " + err.message);
+      if (err.message === 'GEMINI_KEY_MISSING') {
+        setIsKeyConfigured(false);
+        setShowKeySetup(true);
+        setAiResult("⚠️ Gemini API anahtarı eksik. Lütfen yukarıdan anahtarınızı girin.");
+      } else {
+        setAiResult(`❌ Yapay Zeka Hatası:\n${err.message}\n\nİpucu: Ayarlar sayfasından anahtarınızı test edebilir veya Google AI Studio'dan (aistudio.google.com) yeni bir anahtar alabilirsiniz.`);
+      }
     } finally {
       setIsAiLoading(false);
     }
@@ -1536,85 +1586,185 @@ export default function ProjectDetail({
         {activeTab === 'ai' && (
           <div className="max-w-4xl mx-auto flex flex-col gap-6">
             <div className="bg-surface border border-border rounded-xl p-6 shadow-xl flex flex-col gap-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
-                  <Sparkles className="w-5 h-5" />
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Google Gemini Geliştirici & Tasarım Asistanı</h3>
+                    <p className="text-xs text-text-muted">Projenin çalışma loglarını, görevlerini ve hatalarını analiz ederek gerçek yapay zeka raporları üretir.</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">Gemini Geliştirici & Sosyal Medya Asistanı</h3>
-                  <p className="text-xs text-text-muted">Girdiğin logları analiz ederek anında özetler ve sosyal medya metinleri üretir.</p>
-                </div>
+
+                {isKeyConfigured && !showKeySetup && (
+                  <button
+                    type="button"
+                    onClick={() => setShowKeySetup(true)}
+                    className="text-xs text-text-muted hover:text-white px-3 py-1.5 rounded-lg bg-white/5 border border-border flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    API Anahtarını Değiştir
+                  </button>
+                )}
               </div>
 
+              {/* Gemini Durumu & Hızlı API Anahtarı Kurulumu */}
+              {(!isKeyConfigured || showKeySetup) ? (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col gap-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                      <Key className="w-4 h-4 shrink-0" />
+                      <span>Gerçek Gemini Yapay Zekasını Etkinleştirin</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = 'https://aistudio.google.com/app/apikey';
+                        if (window.devlogDesktop?.openExternal) {
+                          window.devlogDesktop.openExternal(url);
+                        } else {
+                          window.open(url, '_blank');
+                        }
+                      }}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold underline cursor-pointer"
+                    >
+                      Google AI Studio'dan Ücretsiz Anahtar Al <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Kendi ücretsiz Google Gemini API anahtarınızı girerek doğrudan Google AI modelleriyle canlı, yaratıcı ve projenize özel derinlemesine analizler alabilirsiniz. Anahtarınız sadece bilgisayarınızda yerel olarak saklanır.
+                  </p>
+                  <form onSubmit={handleSaveApiKeyInline} className="flex gap-2">
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="AIzaSy... ile başlayan anahtarınızı buraya yapıştırın"
+                      className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-text-muted/60 focus:outline-none focus:border-amber-400 transition-colors"
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      disabled={!apiKeyInput.trim()}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-40 shrink-0 shadow-sm"
+                    >
+                      Kaydet & Etkinleştir
+                    </button>
+                    {isKeyConfigured && (
+                      <button
+                        type="button"
+                        onClick={() => setShowKeySetup(false)}
+                        className="px-3 py-2 bg-white/5 hover:bg-white/10 text-text-muted hover:text-white text-xs rounded-lg transition-colors cursor-pointer"
+                      >
+                        Vazgeç
+                      </button>
+                    )}
+                  </form>
+                  {keySaveMessage && (
+                    <p className="text-xs text-emerald-400 font-medium">{keySaveMessage}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs">
+                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span>Google Gemini Yapay Zeka Hazır ({getWorkingModelName()})</span>
+                  </div>
+                  <span className="text-[11px] text-text-muted">Projeniz gerçek yapay zeka ile analiz edilecek.</span>
+                </div>
+              )}
+
               {/* Action Buttons Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <button 
                   onClick={() => handleAI('summary-24h')}
                   disabled={isAiLoading}
-                  className="p-3 bg-background border border-border hover:border-primary text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="p-3.5 bg-background border border-border hover:border-primary text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
                 >
-                  <div className="text-base mb-1">📝</div>
-                  <div className="text-xs font-bold text-white">Son 24 Saati Özetle</div>
-                  <div className="text-[10px] text-text-muted mt-0.5">Bugünkü gelişimin özeti</div>
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform">📝</div>
+                  <div className="text-xs font-bold text-white">Son 24 Saati Analiz Et</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">Bugünkü çalışma hızını ve logları yapay zekayla özetle</div>
                 </button>
 
                 <button 
                   onClick={() => handleAI('summary-all')}
                   disabled={isAiLoading}
-                  className="p-3 bg-background border border-border hover:border-primary text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="p-3.5 bg-background border border-border hover:border-primary text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
                 >
-                  <div className="text-base mb-1">📚</div>
-                  <div className="text-xs font-bold text-white">Tüm Projeyi Özetle</div>
-                  <div className="text-[10px] text-text-muted mt-0.5">Başlangıçtan bu yana durum</div>
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform">📚</div>
+                  <div className="text-xs font-bold text-white">Tüm Proje İlerleme Raporu</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">Projenin başlangıcından bu yana genel mimari & gelişim özeti</div>
+                </button>
+
+                <button 
+                  onClick={() => handleAI('advice')}
+                  disabled={isAiLoading}
+                  className="p-3.5 bg-background border border-border hover:border-amber-400 text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
+                >
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform text-amber-400"><Lightbulb className="w-5 h-5" /></div>
+                  <div className="text-xs font-bold text-white">AI Tasarım & Kod Koçu</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">{project.engine} ve oyun türüne özel mimari & juiciness tavsiyeleri</div>
                 </button>
 
                 <button 
                   onClick={() => handleAI('social-discord')}
                   disabled={isAiLoading}
-                  className="p-3 bg-[#5865F2]/10 border border-[#5865F2]/20 hover:border-[#5865F2] text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="p-3.5 bg-[#5865F2]/10 border border-[#5865F2]/20 hover:border-[#5865F2] text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
                 >
-                  <div className="text-base mb-1 text-[#5865F2]"><MessageSquare className="w-5 h-5" /></div>
-                  <div className="text-xs font-bold text-white">Discord Duyurusu</div>
-                  <div className="text-[10px] text-text-muted mt-0.5">Oyuncular için güncelleme notu</div>
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform text-[#5865F2]"><MessageSquare className="w-5 h-5" /></div>
+                  <div className="text-xs font-bold text-white">Discord Güncelleme Notu</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">Oyuncular için ilgi çekici sürüm duyurusu formatı</div>
                 </button>
 
                 <button 
                   onClick={() => handleAI('social-instagram')}
                   disabled={isAiLoading}
-                  className="p-3 bg-[#E1306C]/10 border border-[#E1306C]/20 hover:border-[#E1306C] text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="p-3.5 bg-[#E1306C]/10 border border-[#E1306C]/20 hover:border-[#E1306C] text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
                 >
-                  <div className="text-base mb-1 text-[#E1306C]"><Hash className="w-5 h-5" /></div>
-                  <div className="text-xs font-bold text-white">Instagram Gönderisi</div>
-                  <div className="text-[10px] text-text-muted mt-0.5">Emoji & hashtag'li post</div>
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform text-[#E1306C]"><Hash className="w-5 h-5" /></div>
+                  <div className="text-xs font-bold text-white">Instagram / Sosyal Medya</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">Geliştirici günlüğü için hashtag ve emoji zengini post</div>
+                </button>
+
+                <button 
+                  onClick={() => handleAI('offline')}
+                  disabled={isAiLoading}
+                  className="p-3.5 bg-white/[0.02] border border-border/70 hover:border-text-muted text-left rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer group"
+                >
+                  <div className="text-lg mb-1.5 group-hover:scale-110 transition-transform">📋</div>
+                  <div className="text-xs font-bold text-text-muted group-hover:text-white">Çevrimdışı Şablon Raporu</div>
+                  <div className="text-[10px] text-text-muted mt-1 leading-snug">Yapay zekasız, anlık istatistiksel şablon metni al</div>
                 </button>
               </div>
 
               {/* AI Output Box */}
               {(isAiLoading || aiResult) && (
-                <div className="p-5 bg-background border border-border rounded-xl flex flex-col gap-3 relative">
+                <div className="p-5 bg-background border border-border rounded-xl flex flex-col gap-3 relative shadow-inner">
                   <div className="flex justify-between items-center border-b border-border/50 pb-2">
                     <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
-                      Gemini Yanıtı
+                      Gemini Analiz Yanıtı
                     </span>
                     {aiResult && !isAiLoading && (
                       <button
                         onClick={handleCopyAi}
-                        className="flex items-center gap-1.5 text-xs text-text-muted hover:text-white px-2.5 py-1 rounded bg-white/5 transition-colors"
+                        className="flex items-center gap-1.5 text-xs text-text-muted hover:text-white px-2.5 py-1 rounded bg-white/5 border border-border hover:border-white/20 transition-colors cursor-pointer"
                       >
                         {copiedAi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiedAi ? 'Kopyalandı' : 'Metni Kopyala'}
+                        {copiedAi ? 'Kopyalandı ✓' : 'Metni Kopyala'}
                       </button>
                     )}
                   </div>
 
                   {isAiLoading ? (
-                    <div className="py-8 flex flex-col items-center justify-center gap-3 text-text-muted">
-                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                      <span className="text-xs">Gemini loglarını analiz ediyor ve metni oluşturuyor...</span>
+                    <div className="py-10 flex flex-col items-center justify-center gap-3 text-text-muted">
+                      <Loader2 className="w-7 h-7 animate-spin text-amber-400" />
+                      <span className="text-xs font-medium text-white">Google Gemini oyun loglarını ve görevlerini inceliyor...</span>
+                      <span className="text-[11px] text-text-muted">Projenize özel analiz ve tavsiyeler hazırlanıyor</span>
                     </div>
                   ) : (
-                    <div className="text-sm whitespace-pre-wrap leading-relaxed text-slate-200 select-text">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed text-slate-100 select-text font-normal font-sans">
                       {aiResult}
                     </div>
                   )}

@@ -13,22 +13,28 @@ export const setGeminiApiKey = (key: string) => {
   localStorage.setItem('devlog_gemini_api_key', key.trim());
 };
 
-// Modeller listesi (404 durumunda sırayla denenir)
+// Modeller listesi (En hızlı ve en güncelden eskiye doğru denenir)
 const CANDIDATE_MODELS = [
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-exp',
-  'gemini-1.5-pro-latest',
+  'gemini-1.5-flash',
+  'gemini-2.5-flash',
+  'gemini-1.5-flash-latest',
   'gemini-1.5-pro',
   'gemini-pro'
 ];
 
 let cachedWorkingModel: string | null = null;
 
+export const getWorkingModelName = (): string => cachedWorkingModel || 'Gemini 2.0 / 1.5 Flash';
+
 // API anahtarının desteklediği modelleri tespit et veya adayları sırayla dene
 async function runWithModelFallback(apiKey: string, prompt: string): Promise<string> {
-  const ai = new GoogleGenerativeAI(apiKey);
+  const cleanKey = apiKey.trim();
+  if (!cleanKey) {
+    throw new Error('GEMINI_KEY_MISSING');
+  }
+
+  const ai = new GoogleGenerativeAI(cleanKey);
 
   // 1. Daha önce çalışan model biliniyorsa önce onu dene
   if (cachedWorkingModel) {
@@ -37,7 +43,10 @@ async function runWithModelFallback(apiKey: string, prompt: string): Promise<str
       const res = await model.generateContent(prompt);
       const text = res.response.text();
       if (text) return text;
-    } catch (e) {
+    } catch (e: any) {
+      if (isTerminalError(e)) {
+        throw formatGeminiError(e);
+      }
       cachedWorkingModel = null;
     }
   }
@@ -55,12 +64,40 @@ async function runWithModelFallback(apiKey: string, prompt: string): Promise<str
       }
     } catch (err: any) {
       lastError = err;
-      // 404 ise sonraki modele geç
+      if (isTerminalError(err)) {
+        throw formatGeminiError(err);
+      }
+      // Model bulunamadıysa (404) sonraki modele geç
       continue;
     }
   }
 
-  throw lastError || new Error('Uygun Gemini modeli bulunamadı.');
+  throw formatGeminiError(lastError);
+}
+
+function isTerminalError(err: any): boolean {
+  const msg = (err?.message || '').toLowerCase();
+  return (
+    msg.includes('api_key_invalid') || 
+    msg.includes('api key not valid') || 
+    msg.includes('permission_denied') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota')
+  );
+}
+
+function formatGeminiError(err: any): Error {
+  const msg = err?.message || 'Bilinmeyen hata';
+  if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+    return new Error("Geçersiz Gemini API Anahtarı! Lütfen Google AI Studio (aistudio.google.com) üzerinden aldığınız 'AIzaSy...' formatındaki geçerli anahtarı girin.");
+  }
+  if (msg.includes('PERMISSION_DENIED')) {
+    return new Error("Erişim Reddedildi (Permission Denied). Bu API anahtarının Generative Language API izni etkinleştirilmemiş olabilir.");
+  }
+  if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+    return new Error("Gemini API Kotası Doldu (Resource Exhausted). Lütfen birkaç dakika sonra tekrar deneyin veya Google AI Studio'dan yeni bir anahtar oluşturun.");
+  }
+  return new Error(`Gemini Bağlantı Hatası: ${msg}`);
 }
 
 export const testGeminiConnection = async (testKey?: string): Promise<{ success: boolean; message: string }> => {
@@ -73,25 +110,25 @@ export const testGeminiConnection = async (testKey?: string): Promise<{ success:
     const text = await runWithModelFallback(key, "Merhaba! Test başarılı mı? Kısaca 'Bağlantı başarılı' yaz.");
     return { 
       success: true, 
-      message: `Gemini API bağlantısı başarılı! (Kullanılan Model: ${cachedWorkingModel || 'Gemini'}) - Yanıt: ${text.slice(0, 50)}...` 
+      message: `Gemini API bağlantısı başarılı! (Model: ${cachedWorkingModel || 'Gemini Flash'}) - Yanıt: ${text.slice(0, 50)}...` 
     };
   } catch (err: any) {
     console.error('Gemini test error:', err);
     return { 
       success: false, 
-      message: `Gemini API hatası: ${err?.message || 'Bağlantı kurulamadı.'}. Ayarlar sayfasından anahtarınızı güncelleyebilirsiniz.` 
+      message: err?.message || 'Gemini API bağlantısı kurulamadı.' 
     };
   }
 };
 
-// Çevrimdışı / Hata durumunda yedek akıllı özet motoru (Kullanıcıyı asla yarı yolda bırakmaz)
-function generateSmartOfflineSummary(logs: DailyLog[], tasks: ProjectTask[], timeframe: '24h' | 'all'): string {
+// Çevrimdışı / Manuel şablon özeti motoru (Yalnızca kullanıcı manuel isterse devreye girer)
+export function generateSmartOfflineSummary(logs: DailyLog[], tasks: ProjectTask[], timeframe: '24h' | 'all'): string {
   const totalHours = logs.reduce((sum, l) => sum + (Number(l.hoursWorked) || 0), 0);
   const pendingTasks = tasks.filter(t => t.status !== 'completed');
   const bugs = tasks.filter(t => t.type === 'bug' && t.status !== 'completed');
   const latestLog = logs[0];
 
-  return `📊 **${timeframe === '24h' ? 'Son 24 Saatlik Geliştirme Özeti' : 'Proje Genel İlerleme Raporu'}**
+  return `📊 **${timeframe === '24h' ? 'Son 24 Saatlik Geliştirme Özeti (Çevrimdışı Şablon)' : 'Proje Genel İlerleme Raporu (Çevrimdışı Şablon)'}**
 
 🔥 **Çalışma İstatistiği:**
 - Toplam Kayıtlı Süre: **${totalHours} saat**
@@ -105,41 +142,20 @@ ${logs.slice(0, 4).map(l => `• [${l.version}] ${l.content} (${l.hoursWorked} s
 • Bekleyen Görevler: ${pendingTasks.length > 0 ? `${pendingTasks.length} adet yapılacak iş var.` : 'Tüm görevler tamamlandı! 🎉'}
 ${bugs.length > 0 ? `⚠️ Dikkat: Çözülmeyi bekleyen ${bugs.length} adet hata kaydı mevcut.` : '✅ Açık kritik hata bulunmuyor.'}
 
-💪 *Harika ilerliyorsun! Devam et, oyun harika bir şekilde şekilleniyor!*`;
-}
-
-function generateSmartOfflineSocial(logs: DailyLog[], platform: 'discord' | 'instagram'): string {
-  const latest = logs[0];
-  const version = latest?.version || 'v0.1.0';
-
-  if (platform === 'discord') {
-    return `📢 **YENİ GÜNCELLEME DUYURUSU - ${version}** 🎮
-
-Merhaba Topluluk! Oyunumuzun en yeni sürümü **${version}** hazır! İşte son geliştirmeler:
-
-✨ **Neler Yeni?**
-${logs.slice(0, 3).map(l => `• ${l.content}`).join('\n')}
-
-Görüşlerinizi ve test geri bildirimlerinizi bekliyoruz! Herkese iyi oyunlar! 🚀`;
-  }
-
-  return `🎮 Geliştirme Günlüğü #${version} yayında! 🚀
-
-Oyunumuz adım adım gelişiyor! Bu son güncellemede neler mi yaptık? 👇
-
-${logs.slice(0, 3).map(l => `✨ ${l.content}`).join('\n')}
-
-Takipte kalın ve düşüncelerinizi yorumlarda belirtmeyi unutmayın! 🔥
-
-#gamedev #indiedev #indiegame #oyungelistirme #unrealengine #unity3d #devlog #coding`;
+💡 *Not: Gerçek yapay zeka analizleri ve oyun tasarım önerileri için yukarıdan Gemini API anahtarınızı ekleyin.*`;
 }
 
 export const generateProjectSummary = async (
   logs: DailyLog[], 
   tasks: ProjectTask[], 
-  timeframe: '24h' | 'all'
+  timeframe: '24h' | 'all',
+  project?: { name: string; engine: string; type: string; version: string }
 ): Promise<string> => {
   const key = getGeminiApiKey();
+  if (!key) {
+    throw new Error('GEMINI_KEY_MISSING');
+  }
+
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
   
@@ -148,73 +164,135 @@ export const generateProjectSummary = async (
     : logs.filter(l => now - l.date < ONE_DAY);
     
   if (relevantLogs.length === 0) {
-    return "Seçili zaman aralığında hiç log bulunmuyor. Lütfen önce biraz çalışıp log girin! 🚀";
+    return "Seçili zaman aralığında hiç geliştirici logu bulunmuyor. Lütfen önce 'Geliştirici Günlüğü' sekmesinden çalışma logu ekleyin! 🚀";
   }
 
   const logText = relevantLogs.map(l => 
-    `- [${new Date(l.date).toLocaleDateString()}] [${l.hoursWorked} saat] [${l.version}]: ${l.content}`
+    `- [Tarih: ${new Date(l.date).toLocaleDateString('tr-TR')}] [Süre: ${l.hoursWorked} saat] [Sürüm: ${l.version}]: ${l.content}`
   ).join('\n');
 
-  const pendingTasks = tasks.filter(t => t.status !== 'completed').map(t => `- [${t.type.toUpperCase()}] ${t.title}`).join('\n');
+  const pendingTodos = tasks.filter(t => t.type === 'todo' && t.status !== 'completed');
+  const completedTodos = tasks.filter(t => t.type === 'todo' && t.status === 'completed');
+  const openBugs = tasks.filter(t => t.type === 'bug' && t.status !== 'completed');
+  const fixedBugs = tasks.filter(t => t.type === 'bug' && t.status === 'completed');
 
   const prompt = `
-    Sen "DevLog" isimli bir uygulama içinde yaşayan profesyonel, samimi ve motive edici bir oyun geliştirici yapay zeka asistanısın. 
-    Bir geliştirici, projesindeki logları sana gönderiyor. Görevin bu logları okuyup ona harika bir geliştirme özeti çıkarmak.
-    
-    Zaman Aralığı: ${timeframe === '24h' ? 'Son 24 Saat' : 'Projenin Başından Beri'}
-    
-    LOGLAR:
-    ${logText}
-    
-    BEKLEYEN GÖREVLER:
-    ${pendingTasks || 'Bekleyen görev yok.'}
-    
-    Lütfen profesyonel ve samimi bir üslupla (emoji kullanarak) Türkçe bir özet çıkar. Yapılacak işleri de kısaca hatırlat.
-  `;
+Sen "DevLog" uygulamasına entegre, kıdemli bir Oyun Tasarımcısı ve Kıdemli Oyun Geliştirici Yapay Zeka Koçusun.
+Geliştiricinin projesine dair verileri aşağıda paylaşıyorum:
 
-  if (key) {
-    try {
-      return await runWithModelFallback(key, prompt);
-    } catch (err: any) {
-      console.warn('Gemini API çağrısı başarısız oldu, yerel özet motoru devreye girdi:', err);
-    }
-  }
+PROJE BİLGİLERİ:
+- Oyun Adı: ${project?.name || 'Oyun Projesi'}
+- Oyun Motoru: ${project?.engine || 'Bilinmiyor'}
+- Tür / Kategori: ${project?.type || 'Bilinmiyor'}
+- Mevcut Sürüm: ${project?.version || 'v1.0.0'}
 
-  return generateSmartOfflineSummary(relevantLogs, tasks, timeframe);
+ZAMAN ARALIĞI: ${timeframe === '24h' ? 'Son 24 Saat' : 'Projenin Başlangıcından Bu Yana'}
+
+GELİŞTİRİCİ ÇALIŞMA LOGLARI:
+${logText}
+
+GÖREVLER VE HATALAR DURUMU:
+- Tamamlanan Görevler (${completedTodos.length}): ${completedTodos.slice(0, 5).map(t => t.title).join(', ') || 'Yok'}
+- Bekleyen Görevler (${pendingTodos.length}): ${pendingTodos.slice(0, 8).map(t => `${t.title} [${t.category || 'Genel'}]`).join(' | ') || 'Yok'}
+- Açık Hatalar (${openBugs.length}): ${openBugs.slice(0, 5).map(b => `${b.title} [${b.category || 'Genel'}]`).join(' | ') || 'Yok'}
+- Çözülen Hata Sayısı: ${fixedBugs.length}
+
+GÖREVİN:
+Bu verileri derinlemesine analiz et ve geliştiriciye özel hazırlanmış, profesyonel bir Türkçe rapor üret.
+Rapor şu başlıklardan oluşmalı:
+1. 🌟 **Genel Değerlendirme & İlerleme Hızı** (Eklenen logların oyuna kattığı değer)
+2. 🛠️ **Öne Çıkan Geliştirmeler** (Loglardaki spesifik mekaniklere, optimizasyonlara ve içeriklere atıf yap)
+3. 🎯 **Sonraki Kritik Hedefler** (Bekleyen görevler ve açık hatalar arasından geliştiricinin ilk yapması gerekenler)
+4. 💡 **Oyun Tasarımı & Teknik Tavsiye** (${project?.engine || 'Seçili motor'} ve ${project?.type || 'oyun'} türüne özel faydalı, uygulanabilir bir ipucu)
+5. 🔥 **Günün Motive Edici Kapanış Notu**
+
+Üslubun: Profesyonel, samimi, bir oyun stüdyosundaki kıdemli ekip arkadaşı gibi, yerinde emojilerle ve okuması keyifli Markdown formatında olsun. Kalıplaşmış şablonlar yerine doğrudan geliştiricinin yazdıklarına yanıt ver.
+`;
+
+  return await runWithModelFallback(key, prompt);
 };
 
 export const generateSocialMediaPost = async (
   logs: DailyLog[], 
-  platform: 'discord' | 'instagram'
+  platform: 'discord' | 'instagram' | 'twitter',
+  project?: { name: string; engine: string; type: string; version: string }
 ): Promise<string> => {
   const key = getGeminiApiKey();
-  const recentLogs = logs.slice(0, 5);
-  
+  if (!key) {
+    throw new Error('GEMINI_KEY_MISSING');
+  }
+
+  const recentLogs = logs.slice(0, 6);
   if (recentLogs.length === 0) {
     return "Paylaşım oluşturmak için önce en az 1 geliştirici logu eklemelisin! 🎮";
   }
 
-  const logText = recentLogs.map(l => 
-    `- [v${l.version}]: ${l.content}`
-  ).join('\n');
+  const logText = recentLogs.map(l => `- [v${l.version}]: ${l.content}`).join('\n');
 
   const prompt = `
-    Bir oyun geliştiricisi, son güncellemelerini sosyal medyada paylaşmak istiyor. 
-    Hedef Platform: ${platform === 'instagram' ? 'Instagram (Bol emoji, hashtag, ve merak uyandıran samimi bir üslup)' : 'Discord (Daha teknik, liste halinde, heyecanlı bir duyuru formatı)'}
-    
-    GELİŞTİRİCİNİN SON LOGLARI:
-    ${logText}
-    
-    Lütfen doğrudan kopyalanıp paylaşılabilecek nihai metni üret. Selamlama vs. ekleme. Hedef platformun ruhuna uygun olsun.
-  `;
+Sen profesyonel bir Bağımsız Oyun (Indie Game) Topluluk Yöneticisi ve Sosyal Medya Uzmanısın.
+Oyun Adı: ${project?.name || 'Oyun'}
+Oyun Motoru: ${project?.engine || 'Bilinmiyor'}
+Tür: ${project?.type || 'İndie'}
+Mevcut Sürüm: ${project?.version || 'v1.0.0'}
 
-  if (key) {
-    try {
-      return await runWithModelFallback(key, prompt);
-    } catch (err: any) {
-      console.warn('Gemini API çağrısı başarısız oldu, yerel şablon motoru devreye girdi:', err);
-    }
+GELİŞTİRİCİNİN EN SON LOGLARI:
+${logText}
+
+HEDEF PLATFORM: ${
+  platform === 'instagram' 
+    ? 'Instagram & Threads (Merak uyandırıcı başlık, maddeler halinde görsel anlatım, takipçilere soru ile bitiş, bol emoji ve popüler #indiedev #gamedev #oyungelistirme hashtagleri)'
+    : platform === 'twitter'
+    ? 'X / Twitter (Kısa, vurucu, 280 karaktere uygun hook, maddeler, #indiedev #gamedev hashtagleri)'
+    : 'Discord (Topluluk duyurusu formatında, @everyone heyecanı, sürüm başlığı, yenilikler, bilinen sorunlar, oyunculara teşekkür ve geri bildirim çağrısı)'
+}
+
+GÖREVİN:
+Doğrudan kopyalanıp paylaşılabilecek nihai gönderi metnini üret. "Tabii ki işte metniniz:" gibi selamlama cümleleri ASLA ekleme, doğrudan gönderi metnini yaz.
+`;
+
+  return await runWithModelFallback(key, prompt);
+};
+
+export const generateDevAdvice = async (
+  logs: DailyLog[],
+  tasks: ProjectTask[],
+  project?: { name: string; engine: string; type: string; version: string }
+): Promise<string> => {
+  const key = getGeminiApiKey();
+  if (!key) {
+    throw new Error('GEMINI_KEY_MISSING');
   }
 
-  return generateSmartOfflineSocial(recentLogs, platform);
+  const pendingTodos = tasks.filter(t => t.type === 'todo' && t.status !== 'completed');
+  const openBugs = tasks.filter(t => t.type === 'bug' && t.status !== 'completed');
+  const latestLogs = logs.slice(0, 5);
+
+  const prompt = `
+Sen kıdemli bir Baş Oyun Tasarımcısı (Lead Game Designer) ve Yazılım Mimarı Yapay Zekasısın.
+Geliştiricinin projesi:
+- Oyun: ${project?.name || 'Bilinmiyor'}
+- Motor: ${project?.engine || 'Bilinmiyor'}
+- Tür: ${project?.type || 'Bilinmiyor'}
+- Sürüm: ${project?.version || 'v1.0.0'}
+
+Son Yapılanlar:
+${latestLogs.map(l => `- ${l.content}`).join('\n') || 'Henüz log yok.'}
+
+Bekleyen Görevler:
+${pendingTodos.slice(0, 6).map(t => `- ${t.title} (${t.category || 'Genel'})`).join('\n') || 'Yok'}
+
+Açık Hatalar:
+${openBugs.slice(0, 5).map(b => `- ${b.title} (${b.category || 'Genel'})`).join('\n') || 'Yok'}
+
+GÖREVİN:
+Geliştiriciye projesini bir üst seviyeye taşıyacak stratejik, mimari ve oyun deneyimi (Game Feel / Juiciness) odaklı 3 kritik tavsiye ver:
+1. 🎮 **Oynanış & Game Feel Tavsiyesi** (Oyunu oyuncuya daha tatmin edici hissettirmek için)
+2. ⚡ **Performans & Kod Mimarisi İpucu** (${project?.engine || 'Oyun motoru'} için özel optimizasyon)
+3. 🎯 **Sonraki Sprint Önceliği** (Neye odaklanmalı, neyi ertelemeli?)
+
+Samimi, doğrudan ve ilham verici ol.
+`;
+
+  return await runWithModelFallback(key, prompt);
 };
