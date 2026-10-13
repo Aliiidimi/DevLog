@@ -29,6 +29,7 @@ export interface ProjectTask {
   type: 'todo' | 'bug';
   priority?: 'low' | 'medium' | 'high';
   status: 'pending' | 'in_progress' | 'completed';
+  category?: string; // Görev veya hata kategorisi (örn: Oynanış, Çevre Tasarımı, Ses)
   version?: string; // Hatanın bulunduğu / çözüldüğü versiyon
   createdAt: number;
 }

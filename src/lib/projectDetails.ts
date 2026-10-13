@@ -296,6 +296,28 @@ export const updateTaskPriority = async (taskId: string, priority: ProjectTask['
   }
 };
 
+export const updateTaskCategory = async (taskId: string, category: string) => {
+  try {
+    const raw = localStorage.getItem(LOCAL_TASKS_KEY);
+    if (raw) {
+      const all: ProjectTask[] = JSON.parse(raw);
+      const updated = all.map(t => t.id === taskId ? { ...t, category } : t);
+      localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(updated));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  if (!taskId.startsWith('local_')) {
+    try {
+      const taskRef = doc(db, 'tasks', taskId);
+      await withTimeout(updateDoc(taskRef, { category }), 2500);
+    } catch (err) {
+      console.warn('Görev kategorisi yerelde güncellendi:', err);
+    }
+  }
+};
+
 export const deleteTask = async (taskId: string) => {
   try {
     const raw = localStorage.getItem(LOCAL_TASKS_KEY);

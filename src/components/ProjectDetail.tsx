@@ -24,7 +24,9 @@ import {
   LayoutDashboard,
   ArrowRight,
   Zap,
-  Target
+  Target,
+  Folder,
+  Tag
 } from 'lucide-react';
 import type { Project, DailyLog, ProjectTask, ProjectMedia } from '../types';
 import { 
@@ -35,6 +37,7 @@ import {
   addTask, 
   updateTaskStatus, 
   updateTaskPriority,
+  updateTaskCategory,
   deleteTask,
   getProjectMedia,
   addProjectMedia,
@@ -72,6 +75,8 @@ export default function ProjectDetail({
   // New To-Do Form
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [newTodoPriority, setNewTodoPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [newTodoCategory, setNewTodoCategory] = useState('');
+  const [selectedTodoCategoryFilter, setSelectedTodoCategoryFilter] = useState('ALL');
   const [isAddingTodo, setIsAddingTodo] = useState(false);
 
   // New Bug Form
@@ -79,6 +84,8 @@ export default function ProjectDetail({
   const [newBugDesc, setNewBugDesc] = useState('');
   const [newBugVersion, setNewBugVersion] = useState(project.version);
   const [newBugPriority, setNewBugPriority] = useState<'low' | 'medium' | 'high'>('high');
+  const [newBugCategory, setNewBugCategory] = useState('');
+  const [selectedBugCategoryFilter, setSelectedBugCategoryFilter] = useState('ALL');
   const [isAddingBug, setIsAddingBug] = useState(false);
 
   // New Media Form
@@ -157,6 +164,7 @@ export default function ProjectDetail({
         title: newTodoTitle,
         type: 'todo',
         priority: newTodoPriority,
+        category: newTodoCategory.trim() || undefined,
         status: 'pending'
       });
       setTasks([added, ...tasks]);
@@ -180,6 +188,7 @@ export default function ProjectDetail({
         version: newBugVersion || project.version,
         type: 'bug',
         priority: newBugPriority,
+        category: newBugCategory.trim() || undefined,
         status: 'pending'
       });
       setTasks([added, ...tasks]);
@@ -190,6 +199,13 @@ export default function ProjectDetail({
     } finally {
       setIsAddingBug(false);
     }
+  };
+
+  const handleUpdateTaskCategory = async (task: ProjectTask, newCategory: string) => {
+    if (!task.id) return;
+    const cat = newCategory.trim() || undefined;
+    setTasks(tasks.map(t => t.id === task.id ? { ...t, category: cat } : t));
+    await updateTaskCategory(task.id, cat || '');
   };
 
   const toggleTaskStatus = async (task: ProjectTask) => {
@@ -290,6 +306,15 @@ export default function ProjectDetail({
   const pendingTodos = todoList.filter(t => t.status !== 'completed');
   const openBugs = bugList.filter(b => b.status !== 'completed');
   const totalHoursWorked = logs.reduce((sum, l) => sum + (Number(l.hoursWorked) || 0), 0);
+
+  // Kategori Listeleri
+  const todoCategories = Array.from(
+    new Set(todoList.map(t => t.category?.trim()).filter((c): c is string => Boolean(c)))
+  ).sort();
+
+  const bugCategories = Array.from(
+    new Set(bugList.map(b => b.category?.trim()).filter((c): c is string => Boolean(c)))
+  ).sort();
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
@@ -829,94 +854,245 @@ export default function ProjectDetail({
                 <ListTodo className="w-4 h-4 text-primary" />
                 Yeni Görev Ekle
               </h3>
-              <form onSubmit={handleAddTodo} className="flex gap-3">
-                <input
-                  type="text"
-                  value={newTodoTitle}
-                  onChange={(e) => setNewTodoTitle(e.target.value)}
-                  placeholder="Yapılacak görevi yaz (Örn: Envanter arayüzünü tasarla)..."
-                  className="flex-1 px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-white"
-                  required
-                />
-                <select
-                  value={newTodoPriority}
-                  onChange={(e) => setNewTodoPriority(e.target.value as any)}
-                  className="px-3 py-2 bg-background border border-border rounded-lg text-xs text-text-muted focus:outline-none focus:border-primary"
-                >
-                  <option value="low">🌱 Düşük Öncelik</option>
-                  <option value="medium">⚡ Orta Öncelik</option>
-                  <option value="high">🔥 Yüksek Öncelik</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={isAddingTodo || !newTodoTitle}
-                  className="px-5 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {isAddingTodo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Görev Ekle
-                </button>
+              <form onSubmit={handleAddTodo} className="flex flex-col gap-3">
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={newTodoTitle}
+                    onChange={(e) => setNewTodoTitle(e.target.value)}
+                    placeholder="Yapılacak görevi yaz (Örn: Envanter arayüzünü tasarla)..."
+                    className="flex-1 px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-white"
+                    required
+                  />
+                  <select
+                    value={newTodoPriority}
+                    onChange={(e) => setNewTodoPriority(e.target.value as any)}
+                    className="px-3 py-2 bg-background border border-border rounded-lg text-xs text-text-muted focus:outline-none focus:border-primary"
+                  >
+                    <option value="low">🌱 Düşük Öncelik</option>
+                    <option value="medium">⚡ Orta Öncelik</option>
+                    <option value="high">🔥 Yüksek Öncelik</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1 flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <Folder className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        list="todo-category-suggestions"
+                        value={newTodoCategory}
+                        onChange={(e) => setNewTodoCategory(e.target.value)}
+                        placeholder="Kategori Adı (Örn: Oynanış, Ses, Çevre Tasarımı, Günlük)..."
+                        className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-xs focus:outline-none focus:border-primary transition-colors text-white placeholder:text-text-muted/60"
+                      />
+                      <datalist id="todo-category-suggestions">
+                        {todoCategories.map(cat => (
+                          <option key={cat} value={cat} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    {todoCategories.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) setNewTodoCategory(e.target.value);
+                        }}
+                        value=""
+                        className="px-2.5 py-2 bg-background border border-border rounded-lg text-xs text-text-muted focus:outline-none focus:border-primary shrink-0"
+                      >
+                        <option value="" disabled>Mevcut Seç...</option>
+                        {todoCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isAddingTodo || !newTodoTitle}
+                    className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                  >
+                    {isAddingTodo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Görev Ekle
+                  </button>
+                </div>
               </form>
             </div>
 
-            {/* Todo List */}
-            <div className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold text-text-muted px-1">Görev Listesi</h3>
+            {/* Todo Category Filter Badges */}
+            {todoCategories.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                <span className="text-text-muted flex items-center gap-1 shrink-0 font-medium mr-1">
+                  <Folder className="w-3.5 h-3.5 text-primary" /> Filtrele:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTodoCategoryFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 ${
+                    selectedTodoCategoryFilter === 'ALL'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Tümü ({todoList.length})
+                </button>
+                {todoCategories.map(cat => {
+                  const count = todoList.filter(t => t.category?.trim() === cat).length;
+                  const isSelected = selectedTodoCategoryFilter === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedTodoCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm'
+                          : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Tag className="w-3 h-3" />
+                      {cat} ({count})
+                    </button>
+                  );
+                })}
+                {todoList.some(t => !t.category?.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTodoCategoryFilter('UNCATEGORIZED')}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 ${
+                      selectedTodoCategoryFilter === 'UNCATEGORIZED'
+                        ? 'bg-slate-500/30 text-slate-200 border border-slate-500/50'
+                        : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    Kategorisiz ({todoList.filter(t => !t.category?.trim()).length})
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Todo List Grouped By Category */}
+            <div className="flex flex-col gap-5">
               {todoList.length === 0 ? (
                 <div className="p-8 text-center bg-surface/50 border border-dashed border-border rounded-xl text-text-muted text-sm">
                   Tebrikler! Bekleyen görev yok.
                 </div>
               ) : (
-                todoList.map((todo) => {
-                  const isDone = todo.status === 'completed';
-                  return (
-                    <div
-                      key={todo.id}
-                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                        isDone 
-                          ? 'bg-background/40 border-transparent opacity-60' 
-                          : 'bg-surface border-border hover:border-primary/40'
-                      }`}
-                    >
-                      <div 
-                        onClick={() => toggleTaskStatus(todo)}
-                        className="flex items-center gap-3 cursor-pointer flex-1"
-                      >
-                        {isDone ? (
-                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                        ) : (
-                          <Circle className="w-5 h-5 text-text-muted hover:text-primary shrink-0 transition-colors" />
-                        )}
-                        <span className={`text-sm ${isDone ? 'line-through text-text-muted' : 'text-white'}`}>
-                          {todo.title}
-                        </span>
-                      </div>
+                (() => {
+                  const visibleTodos = todoList.filter(todo => {
+                    if (selectedTodoCategoryFilter === 'ALL') return true;
+                    if (selectedTodoCategoryFilter === 'UNCATEGORIZED') return !todo.category?.trim();
+                    return todo.category?.trim() === selectedTodoCategoryFilter;
+                  });
 
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={(e) => handleCyclePriority(todo, e)}
-                          title="Önceliği değiştirmek için tıkla (Düşük / Orta / Yüksek)"
-                          className={`text-[10px] px-2.5 py-1 rounded font-medium transition-all active:scale-95 cursor-pointer hover:brightness-125 select-none ${
-                            todo.priority === 'high' 
-                              ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
-                              : todo.priority === 'medium'
-                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
-                          }`}
-                        >
-                          {todo.priority === 'high' ? '🔥 Yüksek' : todo.priority === 'medium' ? '⚡ Orta' : '🌱 Düşük'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTask(todo.id)}
-                          className="text-text-muted hover:text-red-400 p-1 transition-colors"
-                          title="Görevi Sil"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                  if (visibleTodos.length === 0) {
+                    return (
+                      <div className="p-8 text-center bg-surface/50 border border-dashed border-border rounded-xl text-text-muted text-sm">
+                        Bu kategoride henüz bir görev bulunmuyor.
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  }
+
+                  // Grupla
+                  const groups: { [key: string]: ProjectTask[] } = {};
+                  visibleTodos.forEach(t => {
+                    const c = t.category?.trim() || 'Genel / Kategorisiz';
+                    if (!groups[c]) groups[c] = [];
+                    groups[c].push(t);
+                  });
+
+                  return Object.entries(groups).map(([catName, items]) => {
+                    const completedInGroup = items.filter(i => i.status === 'completed').length;
+                    return (
+                      <div key={catName} className="bg-surface border border-border/80 rounded-xl overflow-hidden shadow-sm">
+                        {/* Kategori Başlığı */}
+                        <div className="px-4 py-3 bg-white/[0.02] border-b border-border/60 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Folder className="w-4 h-4 text-primary shrink-0" />
+                            <h4 className="text-sm font-bold text-white tracking-wide">{catName}</h4>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-text-muted font-mono">
+                              {completedInGroup}/{items.length} tamamlandı
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Kategori İçi Görevler */}
+                        <div className="divide-y divide-border/40">
+                          {items.map(todo => {
+                            const isDone = todo.status === 'completed';
+                            return (
+                              <div
+                                key={todo.id}
+                                className={`flex items-center justify-between p-3.5 transition-all ${
+                                  isDone 
+                                    ? 'bg-background/40 opacity-60' 
+                                    : 'hover:bg-white/[0.02]'
+                                }`}
+                              >
+                                <div 
+                                  onClick={() => toggleTaskStatus(todo)}
+                                  className="flex items-center gap-3 cursor-pointer flex-1"
+                                >
+                                  {isDone ? (
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                                  ) : (
+                                    <Circle className="w-5 h-5 text-text-muted hover:text-primary shrink-0 transition-colors" />
+                                  )}
+                                  <span className={`text-sm ${isDone ? 'line-through text-text-muted' : 'text-white'}`}>
+                                    {todo.title}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {/* Kategori Değiştirici Buton */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newCat = prompt('Yeni kategori adını yazın (Boş bırakırsanız kategorisiz olur):', todo.category || '');
+                                      if (newCat !== null) {
+                                        handleUpdateTaskCategory(todo, newCat);
+                                      }
+                                    }}
+                                    title="Kategoriyi değiştir veya ata"
+                                    className="text-[10px] px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-border flex items-center gap-1 transition-colors"
+                                  >
+                                    <Tag className="w-2.5 h-2.5" />
+                                    {todo.category ? todo.category : '+ Kategori'}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleCyclePriority(todo, e)}
+                                    title="Önceliği değiştirmek için tıkla (Düşük / Orta / Yüksek)"
+                                    className={`text-[10px] px-2.5 py-1 rounded font-medium transition-all active:scale-95 cursor-pointer hover:brightness-125 select-none ${
+                                      todo.priority === 'high' 
+                                        ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
+                                        : todo.priority === 'medium'
+                                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                        : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                                    }`}
+                                  >
+                                    {todo.priority === 'high' ? '🔥 Yüksek' : todo.priority === 'medium' ? '⚡ Orta' : '🌱 Düşük'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTask(todo.id)}
+                                    className="text-text-muted hover:text-red-400 p-1 transition-colors"
+                                    title="Görevi Sil"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
               )}
             </div>
 
@@ -962,6 +1138,43 @@ export default function ProjectDetail({
                     <option value="low">💡 Önemsiz</option>
                   </select>
                 </div>
+
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1 flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <Folder className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        list="bug-category-suggestions"
+                        value={newBugCategory}
+                        onChange={(e) => setNewBugCategory(e.target.value)}
+                        placeholder="Hata Kategorisi (Örn: Fizik, UI, Çökme, Ses, Çok Oyunculu)..."
+                        className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-xs focus:outline-none focus:border-red-500 transition-colors text-white placeholder:text-text-muted/60"
+                      />
+                      <datalist id="bug-category-suggestions">
+                        {bugCategories.map(cat => (
+                          <option key={cat} value={cat} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    {bugCategories.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) setNewBugCategory(e.target.value);
+                        }}
+                        value=""
+                        className="px-2.5 py-2 bg-background border border-border rounded-lg text-xs text-text-muted focus:outline-none focus:border-red-500 shrink-0"
+                      >
+                        <option value="" disabled>Mevcut Seç...</option>
+                        {bugCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex gap-3">
                   <textarea
                     value={newBugDesc}
@@ -972,7 +1185,7 @@ export default function ProjectDetail({
                   <button
                     type="submit"
                     disabled={isAddingBug || !newBugTitle}
-                    className="px-5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="px-5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
                   >
                     {isAddingBug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     Hatayı Kaydet
@@ -981,78 +1194,190 @@ export default function ProjectDetail({
               </form>
             </div>
 
-            {/* Bugs List */}
-            <div className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold text-text-muted px-1">Mevcut Hatalar</h3>
+            {/* Bug Category Filter Badges */}
+            {bugCategories.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                <span className="text-text-muted flex items-center gap-1 shrink-0 font-medium mr-1">
+                  <Folder className="w-3.5 h-3.5 text-red-400" /> Filtrele:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBugCategoryFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 ${
+                    selectedBugCategoryFilter === 'ALL'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Tümü ({bugList.length})
+                </button>
+                {bugCategories.map(cat => {
+                  const count = bugList.filter(b => b.category?.trim() === cat).length;
+                  const isSelected = selectedBugCategoryFilter === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedBugCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-sm'
+                          : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Tag className="w-3 h-3" />
+                      {cat} ({count})
+                    </button>
+                  );
+                })}
+                {bugList.some(b => !b.category?.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBugCategoryFilter('UNCATEGORIZED')}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-all shrink-0 ${
+                      selectedBugCategoryFilter === 'UNCATEGORIZED'
+                        ? 'bg-slate-500/30 text-slate-200 border border-slate-500/50'
+                        : 'bg-surface border border-border text-text-muted hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    Kategorisiz ({bugList.filter(b => !b.category?.trim()).length})
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Bugs List Grouped By Category */}
+            <div className="flex flex-col gap-5">
               {bugList.length === 0 ? (
                 <div className="p-8 text-center bg-surface/50 border border-dashed border-border rounded-xl text-text-muted text-sm">
                   Harika! Kayıtlı açık hata bulunmuyor. 🚀
                 </div>
               ) : (
-                bugList.map((bug) => {
-                  const isResolved = bug.status === 'completed';
-                  return (
-                    <div
-                      key={bug.id}
-                      className={`p-4 rounded-xl border flex flex-col gap-2 transition-all ${
-                        isResolved
-                          ? 'bg-background/40 border-transparent opacity-60'
-                          : 'bg-surface border-red-500/30 hover:border-red-500/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div 
-                          onClick={() => toggleTaskStatus(bug)}
-                          className="flex items-center gap-3 cursor-pointer flex-1"
-                        >
-                          {isResolved ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                          ) : (
-                            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-                          )}
-                          <span className={`text-sm font-semibold ${isResolved ? 'line-through text-text-muted' : 'text-white'}`}>
-                            {bug.title}
-                          </span>
+                (() => {
+                  const visibleBugs = bugList.filter(bug => {
+                    if (selectedBugCategoryFilter === 'ALL') return true;
+                    if (selectedBugCategoryFilter === 'UNCATEGORIZED') return !bug.category?.trim();
+                    return bug.category?.trim() === selectedBugCategoryFilter;
+                  });
+
+                  if (visibleBugs.length === 0) {
+                    return (
+                      <div className="p-8 text-center bg-surface/50 border border-dashed border-border rounded-xl text-text-muted text-sm">
+                        Bu kategoride kayıtlı hata bulunmuyor.
+                      </div>
+                    );
+                  }
+
+                  // Grupla
+                  const groups: { [key: string]: ProjectTask[] } = {};
+                  visibleBugs.forEach(b => {
+                    const c = b.category?.trim() || 'Genel / Kategorisiz';
+                    if (!groups[c]) groups[c] = [];
+                    groups[c].push(b);
+                  });
+
+                  return Object.entries(groups).map(([catName, items]) => {
+                    const resolvedInGroup = items.filter(i => i.status === 'completed').length;
+                    return (
+                      <div key={catName} className="bg-surface border border-red-500/20 rounded-xl overflow-hidden shadow-sm">
+                        {/* Kategori Başlığı */}
+                        <div className="px-4 py-3 bg-red-500/[0.04] border-b border-red-500/20 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Folder className="w-4 h-4 text-red-400 shrink-0" />
+                            <h4 className="text-sm font-bold text-white tracking-wide">{catName}</h4>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-text-muted font-mono">
+                              {resolvedInGroup}/{items.length} çözüldü
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          {bug.version && (
-                            <span className="text-[11px] px-2 py-0.5 rounded font-mono bg-white/5 border border-border text-text-muted">
-                              {bug.version}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => handleCyclePriority(bug, e)}
-                            title="Önceliği değiştirmek için tıkla (Kritik / Orta / Düşük)"
-                            className={`text-[10px] px-2.5 py-1 rounded font-medium transition-all active:scale-95 cursor-pointer hover:brightness-125 select-none ${
-                              bug.priority === 'high' 
-                                ? 'bg-red-500/20 text-red-300 border border-red-500/30' 
-                                : bug.priority === 'medium'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
-                            }`}
-                          >
-                            {bug.priority === 'high' ? '🚨 Kritik' : bug.priority === 'medium' ? '⚠️ Orta' : '💡 Önemsiz'}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(bug.id)}
-                            className="text-text-muted hover:text-red-400 p-1 transition-colors"
-                            title="Hatayı Sil"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        {/* Kategori İçi Hatalar */}
+                        <div className="divide-y divide-border/40">
+                          {items.map(bug => {
+                            const isResolved = bug.status === 'completed';
+                            return (
+                              <div
+                                key={bug.id}
+                                className={`p-4 flex flex-col gap-2 transition-all ${
+                                  isResolved
+                                    ? 'bg-background/40 opacity-60'
+                                    : 'hover:bg-white/[0.02]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div 
+                                    onClick={() => toggleTaskStatus(bug)}
+                                    className="flex items-center gap-3 cursor-pointer flex-1"
+                                  >
+                                    {isResolved ? (
+                                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                                    ) : (
+                                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                                    )}
+                                    <span className={`text-sm font-semibold ${isResolved ? 'line-through text-text-muted' : 'text-white'}`}>
+                                      {bug.title}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    {/* Kategori Değiştirici Buton */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newCat = prompt('Yeni kategori adını yazın (Boş bırakırsanız kategorisiz olur):', bug.category || '');
+                                        if (newCat !== null) {
+                                          handleUpdateTaskCategory(bug, newCat);
+                                        }
+                                      }}
+                                      title="Kategoriyi değiştir veya ata"
+                                      className="text-[10px] px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-border flex items-center gap-1 transition-colors"
+                                    >
+                                      <Tag className="w-2.5 h-2.5" />
+                                      {bug.category ? bug.category : '+ Kategori'}
+                                    </button>
+
+                                    {bug.version && (
+                                      <span className="text-[11px] px-2 py-0.5 rounded font-mono bg-white/5 border border-border text-text-muted">
+                                        {bug.version}
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleCyclePriority(bug, e)}
+                                      title="Önceliği değiştirmek için tıkla (Kritik / Orta / Düşük)"
+                                      className={`text-[10px] px-2.5 py-1 rounded font-medium transition-all active:scale-95 cursor-pointer hover:brightness-125 select-none ${
+                                        bug.priority === 'high' 
+                                          ? 'bg-red-500/20 text-red-300 border border-red-500/30' 
+                                          : bug.priority === 'medium'
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                          : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                                      }`}
+                                    >
+                                      {bug.priority === 'high' ? '🚨 Kritik' : bug.priority === 'medium' ? '⚠️ Orta' : '💡 Önemsiz'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteTask(bug.id)}
+                                      className="text-text-muted hover:text-red-400 p-1 transition-colors"
+                                      title="Hatayı Sil"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {bug.description && (
+                                  <p className="text-xs text-text-muted pl-8 leading-relaxed whitespace-pre-wrap">
+                                    {bug.description}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      {bug.description && (
-                        <p className="text-xs text-text-muted pl-8 leading-relaxed whitespace-pre-wrap">
-                          {bug.description}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
+                    );
+                  });
+                })()
               )}
             </div>
 
